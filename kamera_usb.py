@@ -83,6 +83,7 @@ class App(tk.Tk):
         self.photo = None
         self.last_t = time.time()
         self.fps = 0.0
+        self.cam_fps = 0.0
         os.makedirs(OUT_DIR, exist_ok=True)
 
         top = ttk.Frame(self, padding=6)
@@ -100,6 +101,16 @@ class App(tk.Tk):
         self.start_btn.pack(side="left", padx=4)
         self.mirror = tk.BooleanVar(value=False)
         ttk.Checkbutton(top, text="Lustro", variable=self.mirror).pack(side="left", padx=8)
+
+        exp = ttk.Frame(self, padding=(6, 0))
+        exp.pack(fill="x")
+        self.manual_exp = tk.BooleanVar(value=False)
+        ttk.Checkbutton(exp, text="Ręczna ekspozycja (gdy mało FPS w słabym świetle)",
+                        variable=self.manual_exp, command=self.apply_exposure).pack(side="left")
+        self.exp_val = tk.DoubleVar(value=-6)
+        ttk.Scale(exp, from_=-13, to=-1, variable=self.exp_val, length=200,
+                  command=lambda _v: self.apply_exposure()).pack(side="left", padx=8)
+        ttk.Label(exp, text="ciemniej  ←→  jaśniej (krótszy czas = więcej FPS)").pack(side="left")
 
         self.view = tk.Label(self, bg="black")
         self.view.pack(fill="both", expand=True, padx=6, pady=4)
@@ -160,18 +171,46 @@ class App(tk.Tk):
         self.cap = cap
         self.raw = None
         self.running = True
+        self.cam_fps = 0.0
+        self.apply_exposure() if self.manual_exp.get() else None
         self.grab_thread = threading.Thread(target=self.grab_loop, args=(cap,), daemon=True)
         self.grab_thread.start()
         self.start_btn.config(text="Stop")
         self.snap_btn.config(state="normal")
         self.rec_btn.config(state="normal")
 
+    def apply_exposure(self):
+        cap = self.cap
+        if not cap:
+            return
+        if self.manual_exp.get():
+            cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)  # DirectShow: tryb ręczny
+            cap.set(cv2.CAP_PROP_EXPOSURE, round(self.exp_val.get()))
+            log(f"ekspozycja reczna {round(self.exp_val.get())}")
+        else:
+            cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.75)  # tryb automatyczny
+            log("ekspozycja auto")
+
     def grab_loop(self, cap):
+        n, t0, reports = 0, time.time(), 0
         try:
             while self.running and cap.isOpened():
                 ok, f = cap.read()
                 if ok:
                     self.raw = f
+                    n += 1
+                    dt = time.time() - t0
+                    if dt >= 2:
+                        self.cam_fps = n / dt
+                        if reports < 3:
+                            cc = int(cap.get(cv2.CAP_PROP_FOURCC))
+                            fourcc = "".join(chr((cc >> (8 * i)) & 255) for i in range(4))
+                            log(f"kamera: {self.cam_fps:.1f} FPS, fourcc={fourcc!r}, "
+                                f"{cap.get(cv2.CAP_PROP_FRAME_WIDTH):.0f}x{cap.get(cv2.CAP_PROP_FRAME_HEIGHT):.0f}, "
+                                f"fps_prop={cap.get(cv2.CAP_PROP_FPS)}, "
+                                f"auto_exp={cap.get(cv2.CAP_PROP_AUTO_EXPOSURE)}, exp={cap.get(cv2.CAP_PROP_EXPOSURE)}")
+                            reports += 1
+                        n, t0 = 0, time.time()
         finally:
             cap.release()  # zwalnia ten sam wątek, który czyta - inaczej kamera zostaje zablokowana
             log("kamera zwolniona")
@@ -239,7 +278,7 @@ class App(tk.Tk):
                 self.last_t = now
                 self.show(frame)
                 if not self.writer:
-                    self.status.config(text=f"{frame.shape[1]}x{frame.shape[0]}  {self.fps:.0f} FPS")
+                    self.status.config(text=f"{frame.shape[1]}x{frame.shape[0]}  kamera {self.cam_fps:.1f} / ekran {self.fps:.0f} FPS")
         self.after(10, self.loop)
 
     def show(self, frame):
