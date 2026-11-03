@@ -1,6 +1,7 @@
 """Kamera USB - podgląd, zdjęcia i nagrywanie wideo (OpenCV + Tkinter)."""
 import os
 import sys
+import threading
 import time
 import tkinter as tk
 from datetime import datetime
@@ -33,6 +34,8 @@ class App(tk.Tk):
         self.cap = None
         self.writer = None
         self.frame = None
+        self.raw = None
+        self.running = False
         self.photo = None
         self.last_t = time.time()
         self.fps = 0.0
@@ -45,7 +48,7 @@ class App(tk.Tk):
         self.cam_box = ttk.Combobox(top, textvariable=self.cam_var, width=12, state="readonly")
         self.cam_box.pack(side="left", padx=4)
         ttk.Label(top, text="Rozdzielczość:").pack(side="left", padx=(10, 0))
-        self.res_var = tk.StringVar(value="1280x720")
+        self.res_var = tk.StringVar(value="640x480")
         ttk.Combobox(top, textvariable=self.res_var, values=RESOLUTIONS, width=10,
                      state="readonly").pack(side="left", padx=4)
         ttk.Button(top, text="Odśwież", command=self.refresh).pack(side="left", padx=4)
@@ -93,17 +96,32 @@ class App(tk.Tk):
         if not cap.isOpened():
             messagebox.showerror("Kamera USB", "Nie udało się otworzyć kamery (może używa jej inny program).")
             return
+        # MJPG najpierw: bez tego kamera wysyła surowy obraz i FPS spada
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
         w, h = map(int, self.res_var.get().split("x"))
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
+        cap.set(cv2.CAP_PROP_FPS, 30)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         self.cap = cap
+        self.raw = None
+        self.running = True
+        threading.Thread(target=self.grab_loop, args=(cap,), daemon=True).start()
         self.start_btn.config(text="Stop")
         self.snap_btn.config(state="normal")
         self.rec_btn.config(state="normal")
 
+    def grab_loop(self, cap):
+        while self.running and cap.isOpened():
+            ok, f = cap.read()
+            if ok:
+                self.raw = f
+
     def stop_camera(self):
         self.stop_record()
+        self.running = False
         if self.cap:
+            time.sleep(0.1)
             self.cap.release()
         self.cap = None
         self.frame = None
@@ -150,8 +168,8 @@ class App(tk.Tk):
 
     def loop(self):
         if self.cap:
-            ok, frame = self.cap.read()
-            if ok:
+            frame, self.raw = self.raw, None
+            if frame is not None:
                 if self.mirror.get():
                     frame = cv2.flip(frame, 1)
                 self.frame = frame
@@ -163,7 +181,7 @@ class App(tk.Tk):
                 self.show(frame)
                 if not self.writer:
                     self.status.config(text=f"{frame.shape[1]}x{frame.shape[0]}  {self.fps:.0f} FPS")
-        self.after(15, self.loop)
+        self.after(10, self.loop)
 
     def show(self, frame):
         vw, vh = max(self.view.winfo_width(), 2), max(self.view.winfo_height(), 2)
