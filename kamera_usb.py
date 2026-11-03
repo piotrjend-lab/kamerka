@@ -8,6 +8,7 @@ import tkinter as tk
 from datetime import datetime
 from tkinter import messagebox, ttk
 
+os.environ.setdefault("OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS", "0")
 import cv2
 from PIL import Image, ImageTk
 
@@ -27,36 +28,62 @@ def log(msg):
         pass
 
 
-def open_camera(idx, w, h):
-    """Próbuje kolejnych backendów i trybów; zwraca (cap, opis) albo (None, None)."""
+def try_mode(idx, be, mjpg, w, h):
+    """Otwiera kamerę w danym trybie i mierzy realny FPS. Zwraca (cap, fps, opis)."""
+    try:
+        cap = cv2.VideoCapture(idx, be)
+    except Exception as e:
+        log(f"backend={be} mjpg={mjpg} {w}x{h} WYJATEK: {e!r}")
+        return None, 0.0, ""
+    if not cap.isOpened():
+        log(f"backend={be} mjpg={mjpg} {w}x{h} isOpened=False")
+        cap.release()
+        return None, 0.0, ""
+    if mjpg:
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
+    cap.set(cv2.CAP_PROP_FPS, 30)
+    ok, _f = cap.read()
+    if not ok:
+        log(f"backend={be} mjpg={mjpg} {w}x{h} brak klatki")
+        cap.release()
+        return None, 0.0, ""
+    n, t0 = 0, time.time()
+    while time.time() - t0 < 1.5:
+        if cap.read()[0]:
+            n += 1
+    fps = n / (time.time() - t0)
+    cc = int(cap.get(cv2.CAP_PROP_FOURCC))
+    fourcc = "".join(chr((cc >> (8 * i)) & 255) for i in range(4))
+    aw, ah = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    info = f"{'DSHOW' if be == cv2.CAP_DSHOW else 'MSMF' if be == cv2.CAP_MSMF else 'auto'} {fourcc} {aw}x{ah}"
+    log(f"TEST backend={be} mjpg={mjpg} zadane {w}x{h} -> {info}: {fps:.1f} FPS")
+    return cap, fps, info
+
+
+def open_camera(idx, w, h, progress=lambda m: None):
+    """Sprawdza kilka trybów i wybiera pierwszy płynny (>=10 FPS); inaczej najlepszy."""
     log(f"START idx={idx} {w}x{h} opencv={cv2.__version__} win={platform.platform()}")
-    for be in BACKENDS:
-        for mjpg in (True, False):
-            try:
-                cap = cv2.VideoCapture(idx, be)
-            except Exception as e:
-                log(f"backend={be} mjpg={mjpg} WYJATEK przy otwieraniu: {e!r}")
+    modes = [(be, m) for m in (True, False) for be in BACKENDS]
+    sizes = [(w, h)] + ([(320, 240)] if w > 320 else [])
+    best = None  # (fps, be, mjpg, w, h)
+    for sw, sh in sizes:
+        for be, mjpg in modes:
+            progress(f"Test trybu {sw}x{sh} ({'MJPG' if mjpg else 'surowy'})...")
+            cap, fps, info = try_mode(idx, be, mjpg, sw, sh)
+            if cap is None:
                 continue
-            opened = cap.isOpened()
-            log(f"backend={be} mjpg={mjpg} isOpened={opened}")
-            if not opened:
-                cap.release()
-                continue
-            if mjpg:
-                cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
-            cap.set(cv2.CAP_PROP_FPS, 30)
-            ok = False
-            for _ in range(10):
-                ok, _f = cap.read()
-                if ok:
-                    break
-            log(f"backend={be} mjpg={mjpg} read_ok={ok}")
-            if ok:
-                return cap, f"backend={be} mjpg={mjpg}"
+            if fps >= 10:
+                return cap, f"{info}, {fps:.0f} FPS"
             cap.release()
-    return None, None
+            if best is None or fps > best[0]:
+                best = (fps, be, mjpg, sw, sh)
+    if best is None:
+        return None, None
+    progress("Wybieram najlepszy dostępny tryb...")
+    cap, fps, info = try_mode(idx, best[1], best[2], best[3], best[4])
+    return (cap, f"{info}, {fps:.1f} FPS (wolno - sprawdź port USB)") if cap else (None, None)
 
 
 def find_cameras(max_index=6):
@@ -155,7 +182,7 @@ class App(tk.Tk):
         w, h = map(int, self.res_var.get().split("x"))
         self.status.config(text="Otwieranie kamery...")
         self.update_idletasks()
-        cap, info = open_camera(idx, w, h)
+        cap, info = open_camera(idx, w, h, lambda m: (self.status.config(text=m), self.update_idletasks()))
         if cap is None:
             messagebox.showerror(
                 "Kamera USB",
@@ -186,7 +213,6 @@ class App(tk.Tk):
         if self.manual_exp.get():
             cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)  # DirectShow: tryb ręczny
             cap.set(cv2.CAP_PROP_EXPOSURE, round(self.exp_val.get()))
-            log(f"ekspozycja reczna {round(self.exp_val.get())}")
         else:
             cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.75)  # tryb automatyczny
             log("ekspozycja auto")
