@@ -10,9 +10,34 @@ from tkinter import messagebox, ttk
 import cv2
 from PIL import Image, ImageTk
 
-BACKEND = cv2.CAP_DSHOW if sys.platform == "win32" else cv2.CAP_ANY
+BACKENDS = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY] if sys.platform == "win32" else [cv2.CAP_ANY]
+BACKEND = BACKENDS[0]
 RESOLUTIONS = ["640x480", "800x600", "1280x720", "1920x1080"]
 OUT_DIR = os.path.join(os.path.expanduser("~"), "Pictures", "KameraUSB")
+
+
+def open_camera(idx, w, h):
+    """Próbuje kolejnych backendów i trybów; zwraca (cap, opis) albo (None, None)."""
+    for be in BACKENDS:
+        for mjpg in (True, False):
+            cap = cv2.VideoCapture(idx, be)
+            if not cap.isOpened():
+                cap.release()
+                continue
+            if mjpg:
+                cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
+            cap.set(cv2.CAP_PROP_FPS, 30)
+            ok = False
+            for _ in range(10):
+                ok, _f = cap.read()
+                if ok:
+                    break
+            if ok:
+                return cap, f"backend={be} mjpg={mjpg}"
+            cap.release()
+    return None, None
 
 
 def find_cameras(max_index=6):
@@ -92,17 +117,21 @@ class App(tk.Tk):
             messagebox.showwarning("Kamera USB", "Nie wybrano kamery. Podłącz ją i kliknij Odśwież.")
             return
         idx = int(self.cam_var.get().split()[-1])
-        cap = cv2.VideoCapture(idx, BACKEND)
-        if not cap.isOpened():
-            messagebox.showerror("Kamera USB", "Nie udało się otworzyć kamery (może używa jej inny program).")
-            return
-        # MJPG najpierw: bez tego kamera wysyła surowy obraz i FPS spada
-        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
         w, h = map(int, self.res_var.get().split("x"))
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
-        cap.set(cv2.CAP_PROP_FPS, 30)
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        self.status.config(text="Otwieranie kamery...")
+        self.update_idletasks()
+        cap, info = open_camera(idx, w, h)
+        if cap is None:
+            messagebox.showerror(
+                "Kamera USB",
+                "Nie udało się uruchomić kamery.\n\n"
+                "• Zamknij inne programy używające kamery (Teams, Zoom, przeglądarka, "
+                "poprzednie okno tej aplikacji).\n"
+                "• Ustawienia Windows → Prywatność → Aparat: zezwól aplikacjom klasycznym.\n"
+                "• Spróbuj niższej rozdzielczości (640x480).")
+            self.status.config(text="Błąd kamery")
+            return
+        self.status.config(text=f"Kamera OK ({info})")
         self.cap = cap
         self.raw = None
         self.running = True
