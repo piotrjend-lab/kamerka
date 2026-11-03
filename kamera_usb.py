@@ -121,6 +121,9 @@ class App(tk.Tk):
         self.after(30, self.loop)
 
     def refresh(self):
+        if self.cap:
+            self.status.config(text="Zatrzymaj kamerę przed odświeżeniem listy")
+            return
         cams = find_cameras()
         self.cam_box["values"] = [f"Kamera {i}" for i in cams]
         if cams:
@@ -157,23 +160,28 @@ class App(tk.Tk):
         self.cap = cap
         self.raw = None
         self.running = True
-        threading.Thread(target=self.grab_loop, args=(cap,), daemon=True).start()
+        self.grab_thread = threading.Thread(target=self.grab_loop, args=(cap,), daemon=True)
+        self.grab_thread.start()
         self.start_btn.config(text="Stop")
         self.snap_btn.config(state="normal")
         self.rec_btn.config(state="normal")
 
     def grab_loop(self, cap):
-        while self.running and cap.isOpened():
-            ok, f = cap.read()
-            if ok:
-                self.raw = f
+        try:
+            while self.running and cap.isOpened():
+                ok, f = cap.read()
+                if ok:
+                    self.raw = f
+        finally:
+            cap.release()  # zwalnia ten sam wątek, który czyta - inaczej kamera zostaje zablokowana
+            log("kamera zwolniona")
 
     def stop_camera(self):
         self.stop_record()
         self.running = False
-        if self.cap:
-            time.sleep(0.1)
-            self.cap.release()
+        t = getattr(self, "grab_thread", None)
+        if t and t.is_alive():
+            t.join(timeout=5)
         self.cap = None
         self.frame = None
         self.view.config(image="")
