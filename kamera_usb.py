@@ -1,5 +1,6 @@
 """Kamera USB - podgląd, zdjęcia i nagrywanie wideo (OpenCV + Tkinter)."""
 import os
+import platform
 import sys
 import threading
 import time
@@ -16,12 +17,29 @@ RESOLUTIONS = ["640x480", "800x600", "1280x720", "1920x1080"]
 OUT_DIR = os.path.join(os.path.expanduser("~"), "Pictures", "KameraUSB")
 
 
+def log(msg):
+    """Zapisuje diagnostykę do Obrazy\\KameraUSB\\kamera_log.txt."""
+    try:
+        os.makedirs(OUT_DIR, exist_ok=True)
+        with open(os.path.join(OUT_DIR, "kamera_log.txt"), "a", encoding="utf-8") as f:
+            f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} {msg}\n")
+    except Exception:
+        pass
+
+
 def open_camera(idx, w, h):
     """Próbuje kolejnych backendów i trybów; zwraca (cap, opis) albo (None, None)."""
+    log(f"START idx={idx} {w}x{h} opencv={cv2.__version__} win={platform.platform()}")
     for be in BACKENDS:
         for mjpg in (True, False):
-            cap = cv2.VideoCapture(idx, be)
-            if not cap.isOpened():
+            try:
+                cap = cv2.VideoCapture(idx, be)
+            except Exception as e:
+                log(f"backend={be} mjpg={mjpg} WYJATEK przy otwieraniu: {e!r}")
+                continue
+            opened = cap.isOpened()
+            log(f"backend={be} mjpg={mjpg} isOpened={opened}")
+            if not opened:
                 cap.release()
                 continue
             if mjpg:
@@ -34,6 +52,7 @@ def open_camera(idx, w, h):
                 ok, _f = cap.read()
                 if ok:
                     break
+            log(f"backend={be} mjpg={mjpg} read_ok={ok}")
             if ok:
                 return cap, f"backend={be} mjpg={mjpg}"
             cap.release()
@@ -95,6 +114,8 @@ class App(tk.Tk):
         self.status = ttk.Label(bottom, text="Gotowe")
         self.status.pack(side="right")
 
+        self.report_callback_exception = lambda *a: log("BLAD: " + "".join(
+            __import__("traceback").format_exception(*a)))
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.refresh()
         self.after(30, self.loop)
@@ -128,7 +149,8 @@ class App(tk.Tk):
                 "• Zamknij inne programy używające kamery (Teams, Zoom, przeglądarka, "
                 "poprzednie okno tej aplikacji).\n"
                 "• Ustawienia Windows → Prywatność → Aparat: zezwól aplikacjom klasycznym.\n"
-                "• Spróbuj niższej rozdzielczości (640x480).")
+                "• Spróbuj niższej rozdzielczości (640x480).\n\n"
+                f"Diagnostyka: {os.path.join(OUT_DIR, 'kamera_log.txt')}")
             self.status.config(text="Błąd kamery")
             return
         self.status.config(text=f"Kamera OK ({info})")
