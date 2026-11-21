@@ -1,0 +1,62 @@
+# Skopiuj ten plik jako config.toml i dostosuj do swojej firmy.
+
+[firma]
+# NIP Twojej firmy (nabywcy) - faktura musi być wystawiona na ten NIP
+nip = "9541234576"
+nazwa = "Nasza Firma Sp. z o.o."
+
+[dostawca]
+# NIP firmy wykonującej usługę spieku (sprzedawcy). Puste = nie sprawdzaj.
+nip = "6772345618"
+# Dozwolone rachunki bankowe dostawcy (same cyfry). Pusta lista = nie sprawdzaj.
+rachunki = []
+# Umowny termin płatności w dniach od daty wystawienia. 0 = nie sprawdzaj.
+termin_platnosci_dni = 30
+
+[weryfikacja]
+stawka_vat = 23            # oczekiwana stawka VAT [%]
+tolerancja_kwot = 0.02     # dopuszczalna różnica zaokrągleń [PLN]
+tolerancja_ceny_proc = 0.0 # dopuszczalne odchylenie ceny od zamówienia [%]
+tolerancja_ilosci_proc = 0.0  # dopuszczalne przekroczenie ilości z zamówienia [%]
+# Statusy zamówienia, przy których fakturowanie jest prawidłowe
+statusy_zrealizowane = ["zrealizowane", "wysłane", "dostarczone", "zakończone"]
+# Sprawdzanie NIP i rachunku na Białej liście VAT (wl-api.mf.gov.pl) - wymaga internetu
+biala_lista = false
+
+[ocr]
+# "claude"  - odczyt skanów przez Claude (najlepsza jakość, wymaga ANTHROPIC_API_KEY)
+# "lokalny" - tylko PDF z warstwą tekstową (+ Tesseract dla skanów, jeśli zainstalowany)
+silnik = "claude"
+model = "claude-opus-5-5"
+
+[portal]
+# Tryb pobierania zamówień:
+#   "demo"       - wbudowany portal demonstracyjny (http://localhost:8000/demo-portal)
+#   "html"       - logowanie formularzem + odczyt tabeli HTML (requests + BeautifulSoup)
+#   "playwright" - jak "html", ale przez prawdziwą przeglądarkę (strony z JavaScriptem)
+#   "json"       - portal udostępnia API zwracające JSON
+tryb = "demo"
+adres = "http://localhost:8000/demo-portal"
+login_url = "/login"           # adres formularza logowania (względny lub pełny)
+zamowienia_url = "/zamowienia" # lista zamówień
+# Szablon adresu szczegółów zamówienia; {numer} zostanie podmieniony
+zamowienie_url = "/zamowienia/{numer}"
+pole_login = "login"           # atrybut name pola loginu w formularzu
+pole_haslo = "haslo"           # atrybut name pola hasła
+# Login i hasło podaj w zmiennych środowiskowych PORTAL_LOGIN i PORTAL_HASLO
+
+# Selektory CSS (tryby html / playwright)
+[portal.selektory]
+wiersz_listy = "table#zamowienia tbody tr"      # wiersz na liście zamówień
+link_szczegolow = "a"                            # link do szczegółów w wierszu
+numer = ".numer"                                 # na stronie szczegółów
+data = ".data"
+status = ".status"
+dostawca_nip = ".dostawca-nip"
+wiersz_pozycji = "table#pozycje tbody tr"
+# Kolumny tabeli pozycji (indeks od 0)
+kol_kod = 0
+kol_nazwa = 1
+kol_ilosc = 2
+kol_jm = 3
+kol_cena = 4

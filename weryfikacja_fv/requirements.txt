@@ -1,0 +1,16 @@
+fastapi>=0.115
+uvicorn>=0.30
+python-multipart
+pydantic>=2
+anthropic>=2.0
+requests
+beautifulsoup4
+pdfplumber
+pillow
+openpyxl
+reportlab
+# Opcjonalnie - lokalny OCR skanów bez AI (wymaga programu Tesseract z językiem polskim):
+pytesseract
+pdf2image
+# Opcjonalnie - portale wymagające JavaScriptu (tryb "playwright"):
+# playwright

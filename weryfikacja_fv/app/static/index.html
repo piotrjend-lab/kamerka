@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weryfikacja faktur – spiek</title>
+<style>
+:root{--bg:#f5f6f8;--karta:#fff;--tekst:#1c1f24;--szary:#6b7280;--ramka:#e2e5ea;--akcent:#9a3b12;
+--ok:#15803d;--ok-bg:#dcfce7;--uw:#a16207;--uw-bg:#fef3c7;--bl:#b91c1c;--bl-bg:#fee2e2;--info:#1d4ed8;--info-bg:#dbeafe}
+@media (prefers-color-scheme:dark){:root{--bg:#121417;--karta:#1b1e23;--tekst:#e6e8eb;--szary:#9aa1ab;--ramka:#2c3038;
+--akcent:#f08a4b;--ok:#4ade80;--ok-bg:#14361f;--uw:#facc15;--uw-bg:#3a3110;--bl:#f87171;--bl-bg:#3b1717;--info:#93c5fd;--info-bg:#172a46}}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--tekst)}
+header{display:flex;flex-wrap:wrap;gap:.5rem 1.5rem;align-items:center;padding:.8rem 1.2rem;background:var(--karta);border-bottom:1px solid var(--ramka)}
+header h1{font-size:1.1rem;margin:0}
+header .meta{color:var(--szary);font-size:.85rem}
+main{max-width:1500px;margin:0 auto;padding:1rem;display:grid;gap:1rem}
+.karta{background:var(--karta);border:1px solid var(--ramka);border-radius:10px;padding:1rem}
+.karta h2{font-size:1rem;margin:0 0 .7rem}
+.rzad{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+button,.btn{font:inherit;border:1px solid var(--ramka);background:var(--karta);color:var(--tekst);border-radius:7px;padding:.4rem .8rem;cursor:pointer;text-decoration:none}
+button:hover,.btn:hover{border-color:var(--akcent)}
+button.glowny{background:var(--akcent);border-color:var(--akcent);color:#fff}
+button:disabled{opacity:.5;cursor:wait}
+#strefa{border:2px dashed var(--ramka);border-radius:10px;padding:1.6rem;text-align:center;color:var(--szary);cursor:pointer}
+#strefa.nad{border-color:var(--akcent);color:var(--akcent)}
+table{border-collapse:collapse;width:100%}
+th,td{text-align:left;padding:.4rem .5rem;border-bottom:1px solid var(--ramka);vertical-align:top}
+th{font-weight:600;color:var(--szary);font-size:.8rem;text-transform:uppercase;letter-spacing:.02em}
+td.l,th.l{text-align:right;font-variant-numeric:tabular-nums}
+tr.klik{cursor:pointer}tr.klik:hover td{background:color-mix(in srgb,var(--akcent) 6%,transparent)}
+tr.wybrana td{background:color-mix(in srgb,var(--akcent) 12%,transparent)}
+.znak{display:inline-block;padding:.1rem .5rem;border-radius:99px;font-size:.78rem;font-weight:600;white-space:nowrap}
+.OK{background:var(--ok-bg);color:var(--ok)}.UWAGI{background:var(--uw-bg);color:var(--uw)}.BLEDY{background:var(--bl-bg);color:var(--bl)}
+.przewijany{overflow-x:auto}
+#szczegoly{display:none;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:1rem}
+@media (max-width:1000px){#szczegoly{grid-template-columns:1fr}}
+#podglad{width:100%;height:78vh;border:1px solid var(--ramka);border-radius:8px;background:#fff;object-fit:contain}
+.uwaga{padding:.45rem .7rem;border-radius:7px;margin:.3rem 0;display:flex;gap:.6rem}
+.uwaga b{white-space:nowrap}
+.blad{background:var(--bl-bg);color:var(--bl)}.ostrzezenie{background:var(--uw-bg);color:var(--uw)}.info{background:var(--info-bg);color:var(--info)}
+.pola{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:.5rem .8rem;margin-bottom:.8rem}
+label{display:flex;flex-direction:column;font-size:.78rem;color:var(--szary);gap:.15rem}
+input{font:inherit;color:var(--tekst);background:var(--bg);border:1px solid var(--ramka);border-radius:6px;padding:.3rem .45rem;width:100%;min-width:0}
+input:focus{outline:2px solid var(--akcent);outline-offset:-1px}
+#pozycje input{padding:.2rem .3rem}
+.szary{color:var(--szary)}
+details summary{cursor:pointer;font-weight:600}
+#komunikat{position:fixed;right:1rem;bottom:1rem;max-width:420px;padding:.7rem 1rem;border-radius:8px;display:none;box-shadow:0 4px 18px #0003;z-index:9}
+.filtry button.aktywny{border-color:var(--akcent);color:var(--akcent);font-weight:600}
+</style>
+</head>
+<body>
+<header>
+  <h1>Weryfikacja faktur za usługi spieku</h1>
+  <span class="meta" id="ustawienia"></span>
+</header>
+<main>
+  <section class="karta">
+    <h2>1. Zamówienia z portalu dostawcy</h2>
+    <div class="rzad">
+      <button class="glowny" id="sync">⟳ Synchronizuj z portalem</button>
+      <label class="btn" style="flex-direction:row;color:inherit;font-size:inherit">Importuj CSV/XLSX
+        <input type="file" id="importPlik" accept=".csv,.xlsx" hidden></label>
+      <span class="szary" id="statusZam"></span>
+    </div>
+    <details style="margin-top:.7rem"><summary>Pokaż zamówienia</summary>
+      <div class="przewijany"><table id="tabZam"><thead><tr><th>Numer</th><th>Data</th><th>Status</th><th>Pozycje</th><th class="l">Netto</th></tr></thead><tbody></tbody></table></div>
+    </details>
+  </section>
+
+  <section class="karta">
+    <h2>2. Wgraj skany faktur</h2>
+    <div id="strefa">Przeciągnij tutaj pliki PDF / JPG / PNG / TIFF albo <u>kliknij, aby wybrać</u>
+      <input type="file" id="pliki" multiple accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff,.webp,.bmp" hidden></div>
+  </section>
+
+  <section class="karta">
+    <div class="rzad" style="justify-content:space-between;margin-bottom:.6rem">
+      <h2 style="margin:0">3. Faktury i wynik weryfikacji</h2>
+      <div class="rzad filtry">
+        <button data-f="" class="aktywny">Wszystkie</button><button data-f="BLEDY">Błędy</button>
+        <button data-f="UWAGI">Uwagi</button><button data-f="OK">OK</button>
+        <button id="weryfWszystkie">Weryfikuj ponownie</button>
+        <a class="btn" href="/api/raport.csv">⬇ Raport CSV</a>
+      </div>
+    </div>
+    <div class="przewijany"><table id="tabFv"><thead><tr><th>Plik</th><th>Nr faktury</th><th>Data wyst.</th><th>Zamówienia</th>
+      <th class="l">Netto</th><th class="l">Brutto</th><th>Status</th><th>Problemy</th><th>Zatw.</th></tr></thead><tbody></tbody></table></div>
+    <p class="szary" id="pusto">Brak faktur – wgraj pierwsze skany powyżej.</p>
+  </section>
+
+  <section id="szczegoly">
+    <div class="karta"><h2 id="tytulPodgladu">Skan</h2><div id="kontPodglad"></div></div>
+    <div class="karta">
+      <div class="rzad" style="justify-content:space-between"><h2 style="margin:0" id="tytulSzcz"></h2>
+        <div class="rzad"><button class="glowny" id="zapisz">Zapisz poprawki i weryfikuj</button>
+          <button id="zatwierdz"></button><button id="usun">Usuń</button></div></div>
+      <div id="wynik" style="margin:.8rem 0"></div>
+      <h2>Dane odczytane z faktury <span class="szary" style="font-weight:400" id="zrodlo"></span></h2>
+      <div class="pola" id="pola"></div>
+      <div class="przewijany"><table id="pozycje"><thead><tr><th>Nazwa</th><th>Kod</th><th>Nr zam.</th><th>Ilość</th><th>J.m.</th>
+        <th>Cena netto</th><th>VAT %</th><th>Netto</th><th>VAT</th><th>Brutto</th><th></th></tr></thead><tbody></tbody></table></div>
+      <button id="dodajPoz" style="margin-top:.5rem">+ pozycja</button>
+    </div>
+  </section>
+</main>
+<div id="komunikat"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const zl = x => x == null || x === "" ? "—" : Number(x).toLocaleString("pl-PL", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const NAZWY = {OK: "OK", UWAGI: "Uwagi", BLEDY: "Błędy"};
+let faktury = [], wybrana = null, filtr = "";
+
+function komunikat(tekst, rodzaj = "info") {
+  const k = $("#komunikat"); k.className = rodzaj; k.textContent = tekst; k.style.display = "block";
+  clearTimeout(k._t); k._t = setTimeout(() => k.style.display = "none", 6000);
+}
+async function api(url, opcje = {}) {
+  const r = await fetch(url, opcje);
+  const dane = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(dane.detail ? (typeof dane.detail === "string" ? dane.detail : JSON.stringify(dane.detail)) : r.statusText);
+  return dane;
+}
+
+// ---------- ustawienia i zamówienia
+async function wczytajUstawienia() {
+  const u = await api("/api/ustawienia");
+  $("#ustawienia").textContent = `Nabywca: ${u.firma.nazwa} (NIP ${u.firma.nip}) · Dostawca NIP: ${u.dostawca_nip || "—"} · ` +
+    `Odczyt skanów: ${u.silnik_ocr === "claude" ? "Claude (AI)" : "lokalny"} · Portal: ${u.portal} (${u.adres_portalu})`;
+}
+async function wczytajZamowienia() {
+  const d = await api("/api/zamowienia");
+  $("#statusZam").textContent = d.zamowienia.length
+    ? `${d.zamowienia.length} zamówień · ostatnia synchronizacja ${d.ostatnia_synchronizacja.replace("T", " ")}`
+    : "Brak zamówień – kliknij „Synchronizuj”.";
+  $("#tabZam tbody").innerHTML = d.zamowienia.map(z => `<tr><td>${esc(z.numer)}</td><td>${esc(z.data)}</td><td>${esc(z.status)}</td>
+    <td>${z.pozycje.map(p => `${esc(p.kod || "")} ${esc(p.nazwa)}: ${p.ilosc} ${esc(p.jm || "")} × ${zl(p.cena_netto)}`).join("<br>")}</td>
+    <td class="l">${zl(z.wartosc_netto)}</td></tr>`).join("");
+}
+$("#sync").onclick = async e => {
+  e.target.disabled = true;
+  try { const r = await api("/api/zamowienia/synchronizuj", {method: "POST"}); komunikat(`Pobrano ${r.pobrano} zamówień, faktury zweryfikowano ponownie`, "info");
+    await wczytajZamowienia(); await wczytajFaktury(); }
+  catch (err) { komunikat("Portal: " + err.message, "blad"); }
+  e.target.disabled = false;
+};
+$("#importPlik").onchange = async e => {
+  const fd = new FormData(); fd.append("plik", e.target.files[0]);
+  try { const r = await api("/api/zamowienia/import", {method: "POST", body: fd}); komunikat(`Zaimportowano ${r.pobrano} zamówień`);
+    await wczytajZamowienia(); await wczytajFaktury(); }
+  catch (err) { komunikat("Import: " + err.message, "blad"); }
+  e.target.value = "";
+};
+
+// ---------- wgrywanie
+const strefa = $("#strefa");
+strefa.onclick = () => $("#pliki").click();
+strefa.ondragover = e => { e.preventDefault(); strefa.classList.add("nad"); };
+strefa.ondragleave = () => strefa.classList.remove("nad");
+strefa.ondrop = e => { e.preventDefault(); strefa.classList.remove("nad"); wgraj(e.dataTransfer.files); };
+$("#pliki").onchange = e => { wgraj(e.target.files); e.target.value = ""; };
+async function wgraj(pliki) {
+  if (!pliki.length) return;
+  const fd = new FormData(); [...pliki].forEach(p => fd.append("pliki", p));
+  strefa.textContent = `Odczytuję ${pliki.length} plik(i)… (odczyt skanu przez AI trwa zwykle kilkanaście sekund)`;
+  try {
+    const wyn = await api("/api/faktury", {method: "POST", body: fd});
+    const bledy = wyn.filter(w => w.blad);
+    if (bledy.length) komunikat(bledy.map(b => `${b.nazwa_pliku}: ${b.blad}`).join("\n"), "blad");
+    else komunikat(`Wczytano ${wyn.length} faktur(y)`);
+    await wczytajFaktury();
+    const ost = wyn.find(w => w.id); if (ost) pokaz(ost.id);
+  } catch (err) { komunikat(err.message, "blad"); }
+  strefa.innerHTML = 'Przeciągnij tutaj kolejne pliki albo <u>kliknij, aby wybrać</u>';
+}
+
+// ---------- lista faktur
+async function wczytajFaktury() {
+  faktury = await api("/api/faktury");
+  rysujListe();
+  if (wybrana) { const f = faktury.find(x => x.id === wybrana); f ? rysujSzczegoly(f) : ukryj(); }
+}
+function rysujListe() {
+  const lista = faktury.filter(f => !filtr || f.status === filtr);
+  $("#pusto").style.display = faktury.length ? "none" : "block";
+  $("#tabFv tbody").innerHTML = lista.map(f => {
+    const d = f.dane, uw = (f.wynik?.uwagi || []);
+    const nb = uw.filter(u => u.poziom === "blad").length, no = uw.filter(u => u.poziom === "ostrzezenie").length;
+    return `<tr class="klik ${f.id === wybrana ? "wybrana" : ""}" data-id="${f.id}">
+      <td>${esc(f.nazwa_pliku)}</td><td>${esc(d.numer)}</td><td>${esc(d.data_wystawienia)}</td>
+      <td>${esc((d.numery_zamowien || []).join(", "))}</td><td class="l">${zl(d.suma_netto)}</td><td class="l">${zl(d.suma_brutto)}</td>
+      <td><span class="znak ${f.status}">${NAZWY[f.status] || "—"}</span></td>
+      <td>${nb ? `<span style="color:var(--bl)">${nb} bł.</span> ` : ""}${no ? `<span style="color:var(--uw)">${no} ostrz.</span>` : ""}</td>
+      <td>${f.zatwierdzona ? "✔" : ""}</td></tr>`;
+  }).join("");
+  document.querySelectorAll("#tabFv tr.klik").forEach(tr => tr.onclick = () => pokaz(+tr.dataset.id));
+}
+document.querySelectorAll(".filtry button[data-f]").forEach(b => b.onclick = () => {
+  filtr = b.dataset.f; document.querySelectorAll(".filtry button[data-f]").forEach(x => x.classList.toggle("aktywny", x === b)); rysujListe();
+});
+$("#weryfWszystkie").onclick = async () => { await api("/api/weryfikuj-wszystkie", {method: "POST"}); await wczytajFaktury(); komunikat("Zweryfikowano ponownie"); };
+
+// ---------- szczegóły
+const POLA = [["numer","Numer faktury"],["data_wystawienia","Data wystawienia"],["data_sprzedazy","Data sprzedaży / usługi"],
+  ["termin_platnosci","Termin płatności"],["sprzedawca_nazwa","Sprzedawca"],["sprzedawca_nip","NIP sprzedawcy"],
+  ["nabywca_nazwa","Nabywca"],["nabywca_nip","NIP nabywcy"],["numery_zamowien","Numery zamówień (po przecinku)"],
+  ["suma_netto","Razem netto"],["suma_vat","Razem VAT"],["suma_brutto","Razem brutto / do zapłaty"],["waluta","Waluta"],["rachunek","Rachunek bankowy"]];
+const POLA_POZ = ["nazwa","kod","numer_zamowienia","ilosc","jm","cena_netto","stawka_vat","wartosc_netto","wartosc_vat","wartosc_brutto"];
+const LICZBOWE = new Set(["suma_netto","suma_vat","suma_brutto","ilosc","cena_netto","stawka_vat","wartosc_netto","wartosc_vat","wartosc_brutto"]);
+
+function pokaz(id) { wybrana = id; rysujListe(); rysujSzczegoly(faktury.find(f => f.id === id));
+  $("#szczegoly").scrollIntoView({behavior: "smooth"}); }
+function ukryj() { wybrana = null; $("#szczegoly").style.display = "none"; }
+function wierszPoz(p = {}) {
+  return `<tr>${POLA_POZ.map(k => `<td><input data-k="${k}" value="${esc(p[k])}" ${k === "nazwa" ? 'style="min-width:14rem"' : 'style="width:6.5rem"'}></td>`).join("")}
+    <td><button onclick="this.closest('tr').remove()" title="Usuń pozycję">✕</button></td></tr>`;
+}
+function rysujSzczegoly(f) {
+  $("#szczegoly").style.display = "grid";
+  const d = f.dane, url = `/api/faktury/${f.id}/plik`;
+  $("#tytulPodgladu").textContent = f.nazwa_pliku;
+  $("#kontPodglad").innerHTML = /\.pdf$/i.test(f.plik) ? `<iframe id="podglad" src="${url}"></iframe>`
+    : /\.tiff?$/i.test(f.plik) ? `<p><a class="btn" href="${url}">Pobierz skan TIFF</a> (przeglądarka nie wyświetla TIFF)</p>` : `<img id="podglad" src="${url}">`;
+  $("#tytulSzcz").innerHTML = `Faktura ${esc(d.numer || "(bez numeru)")} <span class="znak ${f.status}">${NAZWY[f.status] || ""}</span>`;
+  $("#zatwierdz").textContent = f.zatwierdzona ? "Cofnij zatwierdzenie" : "✔ Zatwierdź do zapłaty";
+  $("#zrodlo").textContent = `(odczyt: ${f.zrodlo_odczytu === "claude" ? "AI" : "lokalny"} – sprawdź i popraw w razie pomyłki)`;
+  const uw = f.wynik?.uwagi || [];
+  const kol = {blad: 0, ostrzezenie: 1, info: 2};
+  $("#wynik").innerHTML = uw.length ? [...uw].sort((a, b) => kol[a.poziom] - kol[b.poziom]).map(u =>
+    `<div class="uwaga ${u.poziom}"><b>${esc(u.regula)}</b><span>${esc(u.opis)}</span></div>`).join("")
+    : `<div class="uwaga info" style="background:var(--ok-bg);color:var(--ok)"><b>OK</b><span>Faktura zgodna z zamówieniem – brak uwag.</span></div>`;
+  $("#pola").innerHTML = POLA.map(([k, n]) => `<label>${n}<input data-k="${k}" value="${esc(k === "numery_zamowien" ? (d[k] || []).join(", ") : d[k])}"></label>`).join("");
+  $("#pozycje tbody").innerHTML = (d.pozycje || []).map(wierszPoz).join("");
+}
+$("#dodajPoz").onclick = () => $("#pozycje tbody").insertAdjacentHTML("beforeend", wierszPoz());
+function wartosc(k, v) {
+  v = v.trim(); if (v === "") return null;
+  if (LICZBOWE.has(k)) { const n = parseFloat(v.replace(/\s/g, "").replace(",", ".")); return isNaN(n) ? null : n; }
+  return v;
+}
+$("#zapisz").onclick = async () => {
+  const dane = {};
+  document.querySelectorAll("#pola input").forEach(i => dane[i.dataset.k] = wartosc(i.dataset.k, i.value));
+  dane.numery_zamowien = (dane.numery_zamowien || "").split(/[,;\s]+/).filter(Boolean);
+  dane.pozycje = [...document.querySelectorAll("#pozycje tbody tr")].map(tr => {
+    const p = {}; tr.querySelectorAll("input").forEach(i => p[i.dataset.k] = wartosc(i.dataset.k, i.value)); p.nazwa ??= ""; return p; });
+  try { await api(`/api/faktury/${wybrana}`, {method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify(dane)});
+    await wczytajFaktury(); komunikat("Zapisano i zweryfikowano"); }
+  catch (err) { komunikat(err.message, "blad"); }
+};
+$("#zatwierdz").onclick = async () => {
+  const f = faktury.find(x => x.id === wybrana);
+  if (!f.zatwierdzona && f.status === "BLEDY" && !confirm("Faktura ma błędy. Czy na pewno zatwierdzić?")) return;
+  await api(`/api/faktury/${wybrana}/zatwierdz`, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({zatwierdzona: !f.zatwierdzona})});
+  await wczytajFaktury();
+};
+$("#usun").onclick = async () => {
+  if (!confirm("Usunąć fakturę i jej skan?")) return;
+  await api(`/api/faktury/${wybrana}`, {method: "DELETE"}); ukryj(); await wczytajFaktury();
+};
+
+wczytajUstawienia(); wczytajZamowienia(); wczytajFaktury();
+</script>
+</body>
+</html>
